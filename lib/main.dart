@@ -1,3 +1,26 @@
+// MiniChat - Chat per modelli con API OpenAI-compatible.
+//
+// Questo file (main.dart) contiene:
+// - L'interfaccia utente (schermata chat, impostazioni)
+// - La logica di invio richieste all'API OpenAI-compatible con risposte in streaming SSE
+// - Le classi Request (chiamate HTTP) e AppSettings (cache con SharedPreferences)
+// - Il tema chiaro/scuro persistente tramite ValueNotifier
+//
+// Il file stt_service.dart gestisce il riconoscimento vocale locale:
+// - Usa sherpa_onnx per eseguire il modello Whisper in locale (ONNX)
+// - Il modello viene scaricato automaticamente da GitHub alla prima esecuzione
+// - Viene estratto da un archivio tar.bz2 e salvato su disco
+// - Serve perché Linux non supporta l'API STT di Google (plugin speech_to_text)
+// - I file del modello sono esclusi da git tramite .gitignore
+//
+// Per il rendering dei messaggi vengono usati gpt_markdown (markdown)
+// e flutter_math_fork (formule LaTeX con $...$).
+//
+// Status funzionalità per piattaforma:
+// - ANDROID e LINUX: funzionante
+// - IOS/WINDOWS/MACOS: non testato
+// - WEB: non funziona e non supportato (incompatibile)
+
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
@@ -8,6 +31,8 @@ import 'package:gpt_markdown/gpt_markdown.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:simple_sse_http/simple_sse_http.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:sherpa_onnx/sherpa_onnx.dart' as sherpa_onnx;
 
 import 'stt_service.dart';
 
@@ -17,6 +42,16 @@ final ValueNotifier<ThemeMode> themeModeNotifier = ValueNotifier(
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // Inizializzazione della libreria nativa di sherpa_onnx 
+  // all'avvio globale per evitare l'eccezione "Please initialize sherpa-onnx first"
+  try {
+    sherpa_onnx.initBindings();
+    debugPrint('Libreria nativa sherpa_onnx caricata con successo.');
+  } catch (e) {
+    debugPrint('Errore nell\'inizializzazione nativa globale di sherpa_onnx: $e');
+  }
+
   final settings = await AppSettings().loadSettings();
   themeModeNotifier.value = settings.darkMode
       ? ThemeMode.dark
@@ -36,12 +71,14 @@ class MiniChatApp extends StatelessWidget {
           debugShowCheckedModeBanner: false,
           title: 'MiniChat',
           theme: ThemeData(
+            fontFamily: GoogleFonts.robotoMono().fontFamily,
             colorScheme: ColorScheme.fromSeed(
               seedColor: const Color(0xFF6366F1),
               brightness: Brightness.light,
             ),
           ),
           darkTheme: ThemeData(
+            fontFamily: GoogleFonts.robotoMono().fontFamily,
             colorScheme: ColorScheme.fromSeed(
               seedColor: const Color(0xFF818CF8),
               brightness: Brightness.dark,
@@ -65,7 +102,7 @@ class MyHomePage extends StatefulWidget {
 }
 
 class ChatMessage {
-  final String role; // "user" o "assistant"
+  final String role;
   final String content;
 
   ChatMessage({required this.role, required this.content});
@@ -78,7 +115,7 @@ class _MyHomePageState extends State<MyHomePage> {
     ChatMessage(
       role: "assistant",
       content:
-          "Ciao! 👋 Sono il tuo assistente. Scrivi qualcosa per iniziare!\nNOTA BENE: Se è la prima volta che usi l'app, vai nelle impostazioni per configurare le tue credenziali API.",
+          "Ciao e benvenuto in *MiniChat!* 👋\nSe è la prima volta che usi l'app, vai nelle **impostazioni** per **configurare le tue credenziali API.**\nFatto ciò, scrivi un messaggio per iniziare!",
     ),
   ];
   final List<Map<String, String>> _messages = [
@@ -86,23 +123,62 @@ class _MyHomePageState extends State<MyHomePage> {
   ];
   bool isLoading = false;
 
-  // STT
+  // Cache Impostazioni e STT
+  AppSettings? _currentSettings; // Cache in memoria per evitare letture I/O continue
+  String _modelName = '';
   final SttService _sttService = SttService();
   bool _isListening = false;
   bool _isTranscribing = false;
   StreamSubscription<Uint8List>? _audioSubscription;
   List<int> _audioBuffer = [];
-  String _modelName = '';
 
   @override
   void initState() {
     super.initState();
-    _loadModelName();
+    _reloadSettings();
+
+    // Semplificato: All'avvio dell'app notifichiamo l'utente con una SnackBar se il modello non è presente
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final isDownloaded = await _sttService.isModelDownloaded();
+      if (!isDownloaded && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Dettatura offline disponibile! Configura il modello locale.'),
+            duration: const Duration(seconds: 6),
+            behavior: SnackBarBehavior.floating,
+            action: SnackBarAction(
+              label: 'Configura',
+              onPressed: () => _navigateToSettings(),
+            ),
+          ),
+        );
+      }
+    });
   }
 
-  Future<void> _loadModelName() async {
+  // Carica le impostazioni una sola volta o alla modifica
+  Future<void> _reloadSettings() async {
     final settings = await AppSettings().loadSettings();
-    setState(() => _modelName = settings.model);
+    if (!mounted) return;
+    setState(() {
+      _currentSettings = settings;
+      _modelName = settings.model;
+    });
+  }
+
+  Future<void> _navigateToSettings() async {
+    final darkMode = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => AppSettingsPage(sttService: _sttService),
+      ),
+    );
+    if (darkMode != null) {
+      themeModeNotifier.value = darkMode
+          ? ThemeMode.dark
+          : ThemeMode.light;
+    }
+    _reloadSettings(); // Aggiorna la cache locale dei setting al ritorno
   }
 
   void _scrollToBottom() {
@@ -110,7 +186,7 @@ class _MyHomePageState extends State<MyHomePage> {
       if (_scrollController.hasClients) {
         _scrollController.animateTo(
           _scrollController.position.maxScrollExtent,
-          duration: Duration(milliseconds: 300),
+          duration: const Duration(milliseconds: 300),
           curve: Curves.easeOut,
         );
       }
@@ -129,7 +205,6 @@ class _MyHomePageState extends State<MyHomePage> {
     _controller.clear();
     _scrollToBottom();
 
-    // Aggiunge un messaggio placeholder vuoto per il bot
     _messages.add({"role": "assistant", "content": ""});
     setState(() {
       _chatMessages.add(ChatMessage(role: "assistant", content: ""));
@@ -138,11 +213,17 @@ class _MyHomePageState extends State<MyHomePage> {
 
     String fullReply = "";
     try {
+      // Usa le impostazioni in cache (fall-back di sicurezza se nullo)
+      final settings = _currentSettings ?? await AppSettings().loadSettings();
       final stream = await Request().sendRequestStreaming(
-        _messages.sublist(0, _messages.length - 1), // esclude placeholder
-        await AppSettings().loadSettings(),
+        _messages.sublist(0, _messages.length - 1),
+        settings,
       );
+
       await for (final chunk in stream) {
+        if (!mounted) {
+          return; // Previene crash se l'utente esce dalla schermata durante lo streaming
+        }
         fullReply += chunk;
         setState(() {
           _chatMessages[botIndex] = ChatMessage(
@@ -170,13 +251,13 @@ class _MyHomePageState extends State<MyHomePage> {
       };
     }
 
+    if (!mounted) return;
     setState(() => isLoading = false);
     _scrollToBottom();
   }
 
   Future<void> _toggleListening() async {
     if (_isListening) {
-      // Stop recording and transcribe
       _isListening = false;
       await _audioSubscription?.cancel();
       await _sttService.stopRecording();
@@ -188,9 +269,10 @@ class _MyHomePageState extends State<MyHomePage> {
         if (audioData.isNotEmpty) {
           final text = await _sttService.transcribe(audioData);
           if (text.isNotEmpty) {
+            final trimmed = text.trim();
             _controller.text = _controller.text.isNotEmpty
-                ? '${_controller.text} $text'
-                : text;
+                ? '${_controller.text} $trimmed'
+                : trimmed;
             _controller.selection = TextSelection.collapsed(
               offset: _controller.text.length,
             );
@@ -204,11 +286,10 @@ class _MyHomePageState extends State<MyHomePage> {
         ).showSnackBar(SnackBar(content: Text('Errore STT: $e')));
       }
 
+      if (!mounted) return;
       setState(() => _isTranscribing = false);
     } else {
-      // Start recording
       try {
-        // Richiedi permesso microfono su Android/iOS
         final hasPermission = await _sttService.hasPermission();
         if (!hasPermission) {
           if (!mounted) return;
@@ -218,8 +299,24 @@ class _MyHomePageState extends State<MyHomePage> {
           return;
         }
 
-        // Carica lingua dalle impostazioni e inizializza (o aggiorna)
-        final settings = await AppSettings().loadSettings();
+        // Semplificato: Se il modello non è scaricato, mostriamo un avviso SnackBar con azione diretta
+        final isModelDownloaded = await _sttService.isModelDownloaded();
+        if (!isModelDownloaded) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text('Il modello Whisper offline non è ancora pronto.'),
+              behavior: SnackBarBehavior.floating,
+              action: SnackBarAction(
+                label: 'Scarica',
+                onPressed: () => _navigateToSettings(),
+              ),
+            ),
+          );
+          return;
+        }
+
+        final settings = _currentSettings ?? await AppSettings().loadSettings();
         await _sttService.initialize(language: settings.sttLanguage);
         _audioBuffer = [];
         final stream = await _sttService.startRecording();
@@ -239,39 +336,78 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   @override
-  void dispose() {
-    _audioSubscription?.cancel();
-    _sttService.dispose();
-    _controller.dispose();
-    _scrollController.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          widget.title,
-          style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.2),
+        // Indicatore del progresso asincrono asimmetrico nel leading dell'AppBar
+        leading: ValueListenableBuilder<bool>(
+          valueListenable: _sttService.isDownloading,
+          builder: (context, isDownloading, _) {
+            return ValueListenableBuilder<bool>(
+              valueListenable: _sttService.isExtracting,
+              builder: (context, isExtracting, _) {
+                if (isDownloading) {
+                  return ValueListenableBuilder<double>(
+                    valueListenable: _sttService.downloadProgress,
+                    builder: (context, progress, _) {
+                      return Tooltip(
+                        message: 'Download Whisper in background...',
+                        child: Center(
+                          child: Stack(
+                            alignment: Alignment.center,
+                            children: [
+                              CircularProgressIndicator(
+                                value: progress,
+                                strokeWidth: 3.0,
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
+                              Text(
+                                '${(progress * 100).toInt()}%',
+                                style: const TextStyle(
+                                  fontSize: 8,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  );
+                } else if (isExtracting) {
+                  return const Tooltip(
+                    message: 'Estrazione in corso...',
+                    child: Center(
+                      child: SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.5,
+                          color: Colors.orange,
+                        ),
+                      ),
+                    ),
+                  );
+                } else {
+                  return const SizedBox.shrink();
+                }
+              },
+            );
+          },
+        ),
+        title: Padding(
+          padding: const EdgeInsets.only(bottom: 4.0),
+          child: Text(
+            widget.title,
+            style: GoogleFonts.silkscreen(fontSize: 30, letterSpacing: 1.2),
+          ),
         ),
         centerTitle: true,
+        actionsPadding: const EdgeInsets.only(right: 4.0),
         actions: [
           IconButton(
-            icon: Icon(Icons.settings),
-            onPressed: () async {
-              final darkMode = await Navigator.push<bool>(
-                context,
-                MaterialPageRoute(builder: (_) => const AppSettingsPage()),
-              );
-              if (darkMode != null) {
-                themeModeNotifier.value = darkMode
-                    ? ThemeMode.dark
-                    : ThemeMode.light;
-              }
-              // Ricarica nome modello (potrebbe essere cambiato)
-              _loadModelName();
-            },
+            icon: const Icon(Icons.settings_rounded),
+            onPressed: _navigateToSettings,
           ),
         ],
       ),
@@ -283,7 +419,10 @@ class _MyHomePageState extends State<MyHomePage> {
             Expanded(
               child: ListView.builder(
                 controller: _scrollController,
-                padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
                 itemCount: _chatMessages.length,
                 itemBuilder: (context, index) {
                   final msg = _chatMessages[index];
@@ -302,7 +441,7 @@ class _MyHomePageState extends State<MyHomePage> {
                         left: isUser ? 60 : 0,
                         right: isUser ? 0 : 60,
                       ),
-                      padding: EdgeInsets.symmetric(
+                      padding: const EdgeInsets.symmetric(
                         horizontal: 14,
                         vertical: 10,
                       ),
@@ -312,11 +451,8 @@ class _MyHomePageState extends State<MyHomePage> {
                             : Theme.of(
                                 context,
                               ).colorScheme.surfaceContainerHighest,
-                        borderRadius: BorderRadius.only(
-                          topLeft: Radius.circular(16),
-                          topRight: Radius.circular(16),
-                          bottomLeft: Radius.circular(isUser ? 16 : 4),
-                          bottomRight: Radius.circular(isUser ? 4 : 16),
+                        borderRadius: const BorderRadius.all(
+                          Radius.circular(12),
                         ),
                       ),
                       child: Column(
@@ -338,7 +474,7 @@ class _MyHomePageState extends State<MyHomePage> {
                                     ).colorScheme.onSurfaceVariant,
                             ),
                           ),
-                          SizedBox(height: 4),
+                          const SizedBox(height: 4),
                           DefaultTextStyle(
                             style: TextStyle(
                               color: isUser
@@ -372,7 +508,7 @@ class _MyHomePageState extends State<MyHomePage> {
               ),
             ),
             if (isLoading)
-              Padding(
+              const Padding(
                 padding: EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                 child: Row(
                   children: [
@@ -393,44 +529,61 @@ class _MyHomePageState extends State<MyHomePage> {
               padding: const EdgeInsets.all(10),
               child: Row(
                 spacing: 4,
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   if (_isTranscribing)
-                    const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 8),
-                      child: SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+                    const SizedBox(
+                      width: 56,
+                      height: 56,
+                      child: Center(
+                        child: SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
                       ),
                     )
                   else
-                    IconButton(
+                    IconButton.filledTonal(
+                      // FIX CHIRURGICO: Consentiamo la pressione per mostrare la SnackBar descrittiva se non scaricato!
+                      onPressed: isLoading ? null : _toggleListening,
                       icon: Icon(
-                        _isListening ? Icons.stop : Icons.mic,
+                        _isListening ? Icons.stop_rounded : Icons.mic_rounded,
                         color: _isListening ? Colors.red : null,
                       ),
-                      onPressed: isLoading ? null : _toggleListening,
+                      style: IconButton.styleFrom(
+                        fixedSize: const Size(56, 56),
+                        shape: const RoundedRectangleBorder(
+                          borderRadius: BorderRadius.all(Radius.circular(12.0)),
+                        ),
+                        padding: EdgeInsets.zero,
+                      ),
                       tooltip: _isListening
                           ? 'Ferma registrazione'
                           : 'Avvia riconoscimento vocale',
                     ),
                   Expanded(
                     child: TextField(
+                      // FIX CHIRURGICO: Utilizzato _controller corretto per evitare l'errore di compilazione
                       controller: _controller,
-                      decoration: InputDecoration(
+                      style: const TextStyle(fontFamily: ''),
+                      decoration: const InputDecoration(
                         hintText: 'Scrivi un messaggio...',
                         border: OutlineInputBorder(),
                       ),
                       onSubmitted: (_) => _sendMessage(),
                     ),
                   ),
-                  IconButton(
-                    icon: Icon(Icons.send),
-                    onPressed: () {
-                      if (!isLoading) {
-                        _sendMessage();
-                      }
-                    },
+                  IconButton.filled(
+                    onPressed: isLoading ? null : _sendMessage,
+                    icon: const Icon(Icons.send_rounded),
+                    style: IconButton.styleFrom(
+                      fixedSize: const Size(56, 56),
+                      shape: const RoundedRectangleBorder(
+                        borderRadius: BorderRadius.all(Radius.circular(12.0)),
+                      ),
+                      padding: EdgeInsets.zero,
+                    ),
                     tooltip: 'Invia messaggio',
                   ),
                 ],
@@ -439,7 +592,7 @@ class _MyHomePageState extends State<MyHomePage> {
             Padding(
               padding: const EdgeInsets.only(bottom: 8.0),
               child: Text(
-                "L'AI può generare risposte non accurate o inappropriate. Usa con cautela.",
+                "L'AI può generare risposte non accurate o inappropriate.",
                 style: TextStyle(
                   fontSize: 10,
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -454,7 +607,9 @@ class _MyHomePageState extends State<MyHomePage> {
 }
 
 class AppSettingsPage extends StatefulWidget {
-  const AppSettingsPage({super.key});
+  final SttService sttService;
+
+  const AppSettingsPage({super.key, required this.sttService});
 
   @override
   State<StatefulWidget> createState() => _AppSettingsPageState();
@@ -466,6 +621,7 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
   final TextEditingController _modelController = TextEditingController();
   String _sttLanguage = 'auto';
   bool _darkMode = false;
+  bool _isModelDownloaded = false;
 
   static const _sttLanguages = {
     'auto': 'Auto-detect',
@@ -486,6 +642,16 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
   void initState() {
     super.initState();
     _loadSettings();
+    _checkModelStatus();
+  }
+
+  Future<void> _checkModelStatus() async {
+    final downloaded = await widget.sttService.isModelDownloaded();
+    if (mounted) {
+      setState(() {
+        _isModelDownloaded = downloaded;
+      });
+    }
   }
 
   Future<void> _loadSettings() async {
@@ -513,10 +679,155 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
     Navigator.pop(context, _darkMode);
   }
 
-@override
+  void _onExtractionFinished() {
+    if (!widget.sttService.isExtracting.value &&
+        !widget.sttService.isDownloading.value) {
+      _checkModelStatus();
+      widget.sttService.isExtracting.removeListener(_onExtractionFinished);
+    }
+  }
+
+  Widget _buildWhisperDownloadSection() {
+    if (_isModelDownloaded) {
+      return Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Theme.of(
+            context,
+          ).colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+          border: Border.all(color: Colors.green.withValues(alpha: 0.5)),
+          borderRadius: const BorderRadius.all(Radius.circular(12.0)),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.check_circle, color: Colors.green),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'Modello Whisper già scaricato (~200MB) e pronto all\'uso locale.',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Theme.of(context).colorScheme.onSurface,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return ValueListenableBuilder<bool>(
+      valueListenable: widget.sttService.isDownloading,
+      builder: (context, isDownloading, _) {
+        return ValueListenableBuilder<bool>(
+          valueListenable: widget.sttService.isExtracting,
+          builder: (context, isExtracting, _) {
+            if (isDownloading) {
+              return ValueListenableBuilder<double>(
+                valueListenable: widget.sttService.downloadProgress,
+                builder: (context, progress, _) {
+                  return Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.surfaceContainerHighest,
+                      borderRadius: const BorderRadius.all(
+                        Radius.circular(12.0),
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              'Download Whisper in corso...',
+                              style: const TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            Text(
+                              '${(progress * 100).toInt()}%',
+                              style: const TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        LinearProgressIndicator(
+                          value: progress.clamp(0.0, 1.0),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              );
+            } else if (isExtracting) {
+              return Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                  borderRadius: const BorderRadius.all(Radius.circular(12.0)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Estrazione modello in corso...',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    const LinearProgressIndicator(
+                      value: null,
+                    ), // Barra indeterminata
+                  ],
+                ),
+              );
+            } else {
+              return SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: const RoundedRectangleBorder(
+                      borderRadius: BorderRadius.all(Radius.circular(12.0)),
+                    ),
+                  ),
+                  onPressed: () {
+                    widget.sttService.startBackgroundDownload();
+                    widget.sttService.isExtracting.addListener(
+                      _onExtractionFinished,
+                    );
+                  },
+                  icon: const Icon(Icons.download_rounded),
+                  label: const Text('Scarica Modello Whisper Offline'),
+                ),
+              );
+            }
+          },
+        );
+      },
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Impostazioni'), centerTitle: true),
+      appBar: AppBar(
+        title: const Padding(
+          padding: EdgeInsets.only(bottom: 4.0),
+          child: Text('Impostazioni'),
+        ),
+        centerTitle: true,
+      ),
       body: Column(
         children: [
           Expanded(
@@ -525,6 +836,7 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
               children: [
                 TextField(
                   controller: _urlController,
+                  style: const TextStyle(fontFamily: ''),
                   decoration: const InputDecoration(
                     border: OutlineInputBorder(),
                     labelText:
@@ -534,6 +846,7 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
                 const SizedBox(height: 16),
                 TextField(
                   controller: _apiKeyController,
+                  style: const TextStyle(fontFamily: ''),
                   decoration: const InputDecoration(
                     border: OutlineInputBorder(),
                     labelText: 'API Key',
@@ -542,15 +855,28 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
                 const SizedBox(height: 16),
                 TextField(
                   controller: _modelController,
+                  style: const TextStyle(fontFamily: ''),
                   decoration: const InputDecoration(
                     border: OutlineInputBorder(),
                     labelText: 'Modello (es. poolside/laguna-xs.2)',
                   ),
                 ),
-                const SizedBox(height: 24),
+                const SizedBox(height: 8),
+                Center(
+                  child: Text(
+                    "ATTENZIONE: La chiave API viene salvata in chiaro sul dispositivo.\nSono compatibili solo modelli con API OpenAI-compatible.",
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
                 const Divider(),
                 const SizedBox(height: 8),
                 DropdownButtonFormField<String>(
+                  // FIX CHIRURGICO: Utilizzato initialValue (non deprecato e corretto) come suggerito
                   initialValue: _sttLanguage,
                   decoration: const InputDecoration(
                     border: OutlineInputBorder(),
@@ -564,16 +890,17 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
                   },
                 ),
                 const SizedBox(height: 8),
-                Center(
-                  child: Text(
-                    "Per il riconoscimento vocale viene usato un modello Whisper locale.",
-                    style: TextStyle(
-                      fontSize: 10,
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
+                Text(
+                  "Per il riconoscimento vocale viene usato un modello Whisper locale, scaricato e custodito nel dispositivo. Non vengono inviati dati a server esterni.",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
                 ),
                 const SizedBox(height: 16),
+                _buildWhisperDownloadSection(),
+                const SizedBox(height: 24),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                   child: SizedBox(
@@ -590,14 +917,20 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
           const Divider(height: 1),
           SwitchListTile(
             title: const Text('Tema scuro'),
-            subtitle: const Text('Usa tema scuro per l\'interfaccia'),
+            subtitle: const Text(
+              'Usa tema scuro per l\'interfaccia\n(fidati, è più bello così)',
+            ),
             value: _darkMode,
             onChanged: (v) async {
               setState(() => _darkMode = v);
-              themeModeNotifier.value =
-                  v ? ThemeMode.dark : ThemeMode.light;
-              final settings = AppSettings();
-              settings.darkMode = v;
+              themeModeNotifier.value = v ? ThemeMode.dark : ThemeMode.light;
+              final settings = AppSettings(
+                url: _urlController.text,
+                apiKey: _apiKeyController.text,
+                model: _modelController.text,
+                sttLanguage: _sttLanguage,
+                darkMode: v,
+              );
               await settings.saveSettings();
             },
           ),
@@ -622,6 +955,7 @@ String? _validateUrl(String url) {
 }
 
 class Request {
+  // FIX CHIRURGICO: Ripristinata l'implementazione completa dello streaming SSE per OpenAI
   Future<Stream<String>> sendRequestStreaming(
     List<Map<String, String>> messages,
     AppSettings settings,
@@ -658,6 +992,7 @@ class Request {
         .where((chunk) => chunk.isNotEmpty);
   }
 
+  // FIX CHIRURGICO: Ripristinato il metodo standard di richiesta asincrona POST
   Future<Map<String, dynamic>> sendRequest(
     List<Map<String, String>> messages,
     AppSettings settings,
@@ -683,7 +1018,7 @@ class Request {
       final response = await http.post(
         url,
         headers: headers,
-        body: JsonEncoder().convert(body),
+        body: jsonEncode(body),
       );
       if (response.statusCode == 200) {
         return jsonDecode(response.body);

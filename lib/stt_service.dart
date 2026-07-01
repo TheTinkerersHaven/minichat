@@ -8,27 +8,27 @@ import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 import 'package:sherpa_onnx/sherpa_onnx.dart' as sherpa_onnx;
 
-/// URL del modello Whisper da scaricare
+/// Whisper model URL to download
 const _modelTarballUrl =
     'https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-whisper-base.tar.bz2';
 
-/// File necessari mappati (Nome originale -> Nome di destinazione nel dispositivo)
+/// Required files mapped (Original name -> Destination name on device)
 const _tarballModelFiles = {
   'base-encoder.int8.onnx': 'encoder.int8.onnx',
   'base-decoder.int8.onnx': 'decoder.int8.onnx',
   'base-tokens.txt': 'tokens.txt',
 };
 
-/// Configurazione passata all'Isolate per l'estrazione
+/// Configuration passed to Isolate for extraction
 class ExtractionConfig {
   final String archivePath;
   final String outputDirectory;
   ExtractionConfig(this.archivePath, this.outputDirectory);
 }
 
-/// Funzione top-level che viene eseguita nell'Isolate in background
+/// Top-level function executed in background Isolate
 void _extractSpecificModelFilesIsolate(ExtractionConfig config) {
-  // InputFileStream legge a blocchi dal disco senza saturare la RAM
+  // InputFileStream reads in chunks from disk without saturating RAM
   final tarBytes = BZip2Decoder().decodeBytes(File(config.archivePath).readAsBytesSync());
   final archive = TarDecoder().decodeBytes(tarBytes);
 
@@ -54,7 +54,7 @@ class SttService {
   final AudioRecorder _recorder = AudioRecorder();
   final int _sampleRate = 16000;
 
-  // Notificatori di stato per l'interfaccia utente (asincroni)
+  // Async state notifiers for UI
   final ValueNotifier<double> _downloadProgress = ValueNotifier(0.0);
   final ValueNotifier<bool> _isExtracting = ValueNotifier(false);
   final ValueNotifier<bool> _isDownloading = ValueNotifier(false);
@@ -66,7 +66,7 @@ class SttService {
   ValueNotifier<bool> get isExtracting => _isExtracting;
   ValueNotifier<bool> get isDownloading => _isDownloading;
 
-  /// Verifica la presenza locale dei file del modello Whisper
+  /// Checks local presence of Whisper model files
   Future<bool> isModelDownloaded() async {
     final modelDir = await _getModelDirectory();
     final present = await _modelFilesPresent(modelDir);
@@ -76,8 +76,8 @@ class SttService {
     return present;
   }
 
-  /// Forza il controllo e l'eventuale download/estrazione del modello.
-  /// Restituisce il percorso della cartella del modello sul disco.
+  /// Forces check and optional model download/extraction.
+  /// Returns model folder path on disk.
   Future<String> ensureModelDownloaded() async {
     if (_modelDirPath != null) {
       return _modelDirPath!;
@@ -90,7 +90,7 @@ class SttService {
     return _modelDirPath!;
   }
 
-  /// Avvia il download e l'estrazione asincrona in background
+  /// Starts async download and extraction in background
   Future<void> startBackgroundDownload() async {
     if (_isDownloading.value || _isExtracting.value) return;
 
@@ -102,12 +102,12 @@ class SttService {
       final appDocDir = await getApplicationDocumentsDirectory();
       final tempZipPath = p.join(appDocDir.path, 'whisper_model_temp.tar.bz2');
 
-      // 1. Download asincrono a blocchi (Zero Memory Bloat)
+      // 1. Async chunked download (Zero Memory Bloat)
       final request = http.Request('GET', Uri.parse(_modelTarballUrl));
       final response = await http.Client().send(request);
 
       if (response.statusCode != 200 && response.statusCode != 302) {
-        throw Exception('Errore download modello: HTTP ${response.statusCode}');
+        throw Exception('Model download error: HTTP ${response.statusCode}');
       }
 
       final contentLength = response.contentLength ?? -1;
@@ -124,15 +124,15 @@ class SttService {
       }
       await sink.close();
 
-      // 2. Transizione verso l'estrazione asincrona
+      // 2. Transition to async extraction
       _isDownloading.value = false;
       _isExtracting.value = true;
 
-      // 3. Esecuzione dell'estrazione asincrona su Isolate separato
+      // 3. Execution of async extraction on separate Isolate
       final config = ExtractionConfig(tempZipPath, modelDir.path);
       await compute(_extractSpecificModelFilesIsolate, config);
 
-      // Pulizia dei file temporanei sul disco dell'utente
+      // Cleanup of temporary files on user disk
       if (await tempFile.exists()) {
         await tempFile.delete();
       }
@@ -140,27 +140,27 @@ class SttService {
       _modelDirPath = modelDir.path;
       _downloadProgress.value = 1.0;
     } catch (e) {
-      debugPrint('Errore durante download/estrazione asincrona: $e');
+      debugPrint('Error during async download/extraction: $e');
     } finally {
       _isDownloading.value = false;
       _isExtracting.value = false;
     }
   }
 
-  /// Inizializza il riconoscitore se il modello è presente
+  /// Initializes recognizer if model is present
   Future<void> initialize({String language = 'auto'}) async {
     final lang = language == 'auto' ? '' : language;
     if (_recognizer != null && _currentLanguage == lang) return;
 
     final modelDir = await _getModelDirectory();
     if (!await _modelFilesPresent(modelDir)) {
-      throw Exception('Modello non presente sul dispositivo.');
+      throw Exception('Model not present on device.');
     }
 
     _modelDirPath = modelDir.path;
     _currentLanguage = lang;
 
-    // Configurazione del modulo Sherpa ONNX Whisper
+    // Configuration of Sherpa ONNX Whisper module
     final config = sherpa_onnx.OfflineRecognizerConfig(
       model: sherpa_onnx.OfflineModelConfig(
         tokens: p.join(_modelDirPath!, 'tokens.txt'),
@@ -176,13 +176,13 @@ class SttService {
     _recognizer = sherpa_onnx.OfflineRecognizer(config);
   }
 
-  /// Restituisce la directory di destinazione del modello Whisper
+  /// Returns Whisper model destination directory
   Future<Directory> _getModelDirectory() async {
     final appDocDir = await getApplicationDocumentsDirectory();
     return Directory(p.join(appDocDir.path, 'sherpa-onnx-whisper-base'));
   }
 
-  /// Verifica la presenza effettiva e valida dei 3 file nel disco
+  /// Verifies actual presence and validity of 3 files on disk
   Future<bool> _modelFilesPresent(Directory modelDir) async {
     if (!await modelDir.exists()) return false;
     for (final targetName in _tarballModelFiles.values) {
@@ -194,12 +194,12 @@ class SttService {
     return true;
   }
 
-  /// Permessi del microfono
+  /// Microphone permissions
   Future<bool> hasPermission() async {
     return await _recorder.hasPermission();
   }
 
-  /// Avvia la registrazione audio a flusso continuo (PCM 16 bit mono)
+  /// Starts continuous audio recording stream (PCM 16-bit mono)
   Future<Stream<Uint8List>> startRecording() async {
     return await _recorder.startStream(
       RecordConfig(
@@ -210,22 +210,22 @@ class SttService {
     );
   }
 
-  /// Interrompe la registrazione
+  /// Stops recording
   Future<void> stopRecording() async {
     await _recorder.stop();
   }
 
-  /// Trascrizione asincrona dei dati audio PCM 16 bit tramite il modello ONNX locale
+  /// Async transcription of PCM 16-bit audio data via local ONNX model
   Future<String> transcribe(Uint8List pcm16Data) async {
     if (_recognizer == null) {
-      throw Exception('STT non inizializzato. Configura il modello.');
+      throw Exception('STT not initialized. Configure the model.');
     }
     final floatSamples = _convertPcm16ToFloat32(pcm16Data);
     final stream = _recognizer!.createStream();
     stream.acceptWaveform(samples: floatSamples, sampleRate: _sampleRate);
     _recognizer!.decode(stream);
     
-    // Recupera il risultato testuale tramite l'istanza del recognizer
+    // Retrieves text result via recognizer instance
     final result = _recognizer!.getResult(stream);
     final text = result.text;
     
@@ -233,7 +233,7 @@ class SttService {
     return text;
   }
 
-  /// Converte i byte PCM16 in Float32 (richiesto da sherpa_onnx)
+  /// Converts PCM16 bytes to Float32 (required by sherpa_onnx)
   Float32List _convertPcm16ToFloat32(Uint8List bytes) {
     final numSamples = bytes.lengthInBytes ~/ 2;
     final result = Float32List(numSamples);
@@ -245,7 +245,7 @@ class SttService {
     return result;
   }
 
-  /// Rilascio delle risorse hardware
+  /// Release hardware resources
   void dispose() {
     _recorder.dispose();
     _recognizer?.free();

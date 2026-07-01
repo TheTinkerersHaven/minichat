@@ -1,3 +1,11 @@
+// stt_service.dart - Offline speech recognition with Whisper (sherpa-onnx).
+//
+// This file handles:
+// - Automatic Whisper model download (tar.bz2) from GitHub on first run
+// - Model file extraction (encoder, decoder, tokens) in a background Isolate
+// - Initialization of the sherpa_onnx OfflineRecognizer
+// - Audio recording via microphone and local transcription
+
 import 'dart:async';
 import 'dart:io';
 import 'package:archive/archive_io.dart';

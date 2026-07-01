@@ -38,6 +38,7 @@ final ValueNotifier<ThemeMode> themeModeNotifier = ValueNotifier(
   ThemeMode.light,
 );
 
+/// App entry point: loads settings, initializes sherpa_onnx native bindings, and launches the app.
 void main() async {
   // Initialize sherpa_onnx native library at global startup to avoid "Please initialize sherpa-onnx first" exception
   try {
@@ -58,6 +59,7 @@ class MiniChatApp extends StatelessWidget {
   const MiniChatApp({super.key});
 
   @override
+  /// Builds the MaterialApp with light/dark theme based on themeModeNotifier.
   Widget build(BuildContext context) {
     return ValueListenableBuilder<ThemeMode>(
       valueListenable: themeModeNotifier,
@@ -129,6 +131,7 @@ class _MyHomePageState extends State<MyHomePage> {
   List<int> _audioBuffer = [];
 
   @override
+  /// Initializes the chat screen: loads settings and shows a SnackBar if the Whisper model is missing.
   void initState() {
     super.initState();
     _reloadSettings();
@@ -154,7 +157,7 @@ class _MyHomePageState extends State<MyHomePage> {
     });
   }
 
-  // Load settings once or when modified
+  /// Loads settings from SharedPreferences and updates the local cache.
   Future<void> _reloadSettings() async {
     final settings = await AppSettings().loadSettings();
     if (!mounted) return;
@@ -164,6 +167,7 @@ class _MyHomePageState extends State<MyHomePage> {
     });
   }
 
+  /// Opens the settings page and refreshes local settings on return.
   Future<void> _navigateToSettings() async {
     final darkMode = await Navigator.push<bool>(
       context,
@@ -177,6 +181,7 @@ class _MyHomePageState extends State<MyHomePage> {
     _reloadSettings(); // Update local settings cache on return
   }
 
+  /// Scrolls the chat list to the bottom with a smooth animation.
   void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
@@ -189,6 +194,7 @@ class _MyHomePageState extends State<MyHomePage> {
     });
   }
 
+  /// Sends the user message to the API, streams the response, and updates the chat UI.
   Future<void> _sendMessage() async {
     final text = _controller.text.trim();
     if (text.isEmpty) return;
@@ -252,6 +258,7 @@ class _MyHomePageState extends State<MyHomePage> {
     _scrollToBottom();
   }
 
+  /// Toggles speech recognition: starts/stops recording and transcribes audio with Whisper.
   Future<void> _toggleListening() async {
     if (_isListening) {
       _isListening = false;
@@ -334,6 +341,7 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   @override
+  /// Builds the main chat UI: message list, input row, STT button, and loading indicators.
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
@@ -635,12 +643,14 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
   };
 
   @override
+  /// Initialises the settings page: loads saved settings and checks Whisper model status.
   void initState() {
     super.initState();
     _loadSettings();
     _checkModelStatus();
   }
 
+  /// Checks whether the Whisper model is already downloaded and updates the UI state.
   Future<void> _checkModelStatus() async {
     final downloaded = await widget.sttService.isModelDownloaded();
     if (mounted) {
@@ -650,6 +660,7 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
     }
   }
 
+  /// Loads settings from SharedPreferences and populates the form fields.
   Future<void> _loadSettings() async {
     final settings = await AppSettings().loadSettings();
     setState(() {
@@ -661,6 +672,7 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
     });
   }
 
+  /// Saves the current form values to SharedPreferences and returns the dark mode setting.
   Future<void> _saveSettings() async {
     final settings = AppSettings(
       url: _urlController.text,
@@ -675,6 +687,7 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
     Navigator.pop(context, _darkMode);
   }
 
+  /// Called when model extraction finishes; re-checks model status and removes the listener.
   void _onExtractionFinished() {
     if (!widget.sttService.isExtracting.value &&
         !widget.sttService.isDownloading.value) {
@@ -683,6 +696,7 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
     }
   }
 
+  /// Builds the Whisper download section: shows status card or download/extract progress UI.
   Widget _buildWhisperDownloadSection() {
     if (_isModelDownloaded) {
       return Container(
@@ -815,6 +829,7 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
   }
 
   @override
+  /// Builds the settings page: API configuration, language picker, Whisper download, and dark theme toggle.
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
@@ -935,12 +950,14 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
   }
 }
 
+/// Removes the protocol prefix (http:// or https://) from a URL string.
 String _stripProtocol(String url) {
   if (url.startsWith('https://')) return url.substring(8);
   if (url.startsWith('http://')) return url.substring(7);
   return url;
 }
 
+/// Validates that the URL has at least a host and a path after stripping the protocol.
 String? _validateUrl(String url) {
   if (url.isEmpty) return null;
   final cleanUrl = _stripProtocol(url);
@@ -950,6 +967,7 @@ String? _validateUrl(String url) {
 }
 
 class Request {
+  /// Sends a streaming POST request to the OpenAI-compatible API and returns a stream of text chunks.
   Future<Stream<String>> sendRequestStreaming(
     List<Map<String, String>> messages,
     AppSettings settings,
@@ -1008,6 +1026,7 @@ class AppSettings {
     this.darkMode = false,
   });
 
+  /// Persists all settings to SharedPreferences.
   Future<void> saveSettings() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_keyUrl, url);
@@ -1017,6 +1036,7 @@ class AppSettings {
     await prefs.setBool(_keyDarkMode, darkMode);
   }
 
+  /// Loads all settings from SharedPreferences; missing keys fall back to defaults.
   Future<AppSettings> loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
     return AppSettings(

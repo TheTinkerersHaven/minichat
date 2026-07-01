@@ -1,17 +1,57 @@
-# minichat
+# MiniChat
 
-A new Flutter project.
+A Flutter chat client for LLMs with OpenAI-compatible APIs, featuring local speech recognition via Whisper.
+
+## Features
+
+- **Chat with any OpenAI-compatible LLM** — configure your own endpoint, API key, and model
+- **SSE streaming responses** — real-time token-by-token replies
+- **Offline speech-to-text** — on-device Whisper model via sherpa_onnx (no data sent to external servers)
+- **Markdown rendering** — including LaTeX math (`$...$`) via gpt_markdown and flutter_math_fork
+- **Dark/light theme** — persistent across sessions
+- **Settings persistence** — via SharedPreferences
+
+## Platform Support
+
+| Platform  | Status |
+|-----------|--------|
+| Android   | Working |
+| Linux     | Working |
+| iOS       | Not tested |
+| Windows   | Not tested |
+| macOS     | Not tested |
+| Web       | Not supported |
 
 ## Getting Started
 
-This project is a starting point for a Flutter application.
+### Prerequisites
 
-A few resources to get you started if this is your first Flutter project:
+- Flutter SDK ^3.12.2
+- A valid API endpoint compatible with OpenAI's chat completions API
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+### Configuration
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+1. Open the app and navigate to **Settings**
+2. Enter your API endpoint URL (e.g. `api.openai.com/v1/chat/completions`)
+3. Enter your API key
+4. Specify the model name (e.g. `gpt-4o-mini`)
+5. Save settings
+
+### Offline Speech Recognition
+
+The app can download a Whisper model (~200MB) for offline speech-to-text. Go to **Settings** and tap **Download Offline Whisper Model**. Once downloaded, the mic button in the chat screen will let you dictate messages.
+
+## Dependencies
+
+| Package | Purpose |
+|---------|---------|
+| `gpt_markdown` | Markdown rendering |
+| `flutter_math_fork` | LaTeX math display |
+| `shared_preferences` | Persistent settings |
+| `simple_sse_http` | SSE streaming |
+| `sherpa_onnx` | On-device Whisper inference |
+| `record` | Audio recording |
+| `archive` | Tarball extraction for Whisper model |
+| `path_provider` | File system paths |
+| `google_fonts` | Roboto Mono & Silkscreen fonts |
+| `http` | HTTP client |

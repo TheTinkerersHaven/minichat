@@ -4,6 +4,6 @@
 -keep class io.flutter.view.** { *; }
 -keep class io.flutter.** { *; }
 -keep class io.flutter.plugins.** { *; }
--keep class com.example.minichat.** { *; }
--dontwarn com.example.minichat.**
+-keep class dev.tsquareh.minichat.** { *; }
+-dontwarn dev.tsquareh.minichat.**
 -dontwarn com.google.android.play.core.**

@@ -1,4 +1,4 @@
-package com.example.minichat
+package dev.tsquareh.minichat
 
 import io.flutter.embedding.android.FlutterActivity
 

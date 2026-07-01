@@ -27,11 +27,15 @@ jobs:
         with:
           channel: stable
       - run: flutter pub get
-      - run: flutter build apk --debug
+      - run: flutter build apk --release
+      - name: Rename APK
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          cp build/app/outputs/flutter-apk/app-release.apk "MiniChat-${VERSION}.apk"
       - uses: actions/upload-artifact@v7
         with:
-          name: app-debug
-          path: build/app/outputs/flutter-apk/app-debug.apk
+          name: app-release
+          path: MiniChat-*.apk
 
   build-linux:
     needs: analyze
@@ -83,7 +87,7 @@ jobs:
 
           wget -q "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-$ARCH.AppImage" -O /tmp/appimagetool
           chmod +x /tmp/appimagetool
-          /tmp/appimagetool $APPDIR $APP-$VERSION-$ARCH.AppImage
+          /tmp/appimagetool $APPDIR MiniChat-$VERSION-$ARCH.AppImage
 
       - uses: actions/upload-artifact@v7
         with:
@@ -102,5 +106,5 @@ jobs:
         with:
           files: |
             appimage/*.AppImage
-            app-debug/*.apk
+            app-release/*.apk
           generate_release_notes: true

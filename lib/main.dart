@@ -851,7 +851,7 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
                   decoration: const InputDecoration(
                     border: OutlineInputBorder(),
                     labelText:
-                        'URL completo (es. api.openai.com/v1/chat/completions)',
+                        'Full URL (e.g. api.openai.com/v1/chat/completions)',
                   ),
                 ),
                 const SizedBox(height: 16),

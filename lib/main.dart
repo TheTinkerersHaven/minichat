@@ -29,7 +29,6 @@ import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:gpt_markdown/gpt_markdown.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:simple_sse_http/simple_sse_http.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:sherpa_onnx/sherpa_onnx.dart' as sherpa_onnx;
 
 import 'stt_service.dart';
@@ -40,6 +39,7 @@ final ValueNotifier<ThemeMode> themeModeNotifier = ValueNotifier(
 
 /// App entry point: loads settings, initializes sherpa_onnx native bindings, and launches the app.
 void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
   // Initialize sherpa_onnx native library at global startup to avoid "Please initialize sherpa-onnx first" exception
   try {
     sherpa_onnx.initBindings();
@@ -68,14 +68,14 @@ class MiniChatApp extends StatelessWidget {
           debugShowCheckedModeBanner: false,
           title: 'MiniChat',
           theme: ThemeData(
-            fontFamily: GoogleFonts.robotoMono().fontFamily,
+            fontFamily: 'RobotoMono',
             colorScheme: ColorScheme.fromSeed(
               seedColor: const Color(0xFF6366F1),
               brightness: Brightness.light,
             ),
           ),
           darkTheme: ThemeData(
-            fontFamily: GoogleFonts.robotoMono().fontFamily,
+            fontFamily: 'RobotoMono',
             colorScheme: ColorScheme.fromSeed(
               seedColor: const Color(0xFF818CF8),
               brightness: Brightness.dark,
@@ -405,7 +405,7 @@ class _MyHomePageState extends State<MyHomePage> {
           padding: const EdgeInsets.only(bottom: 4.0),
           child: Text(
             widget.title,
-            style: GoogleFonts.silkscreen(fontSize: 30, letterSpacing: 1.2),
+            style: const TextStyle(fontSize: 30, letterSpacing: 1.2, fontFamily: 'Silkscreen'),
           ),
         ),
         centerTitle: true,

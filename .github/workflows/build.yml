@@ -27,11 +27,14 @@ jobs:
         with:
           channel: stable
       - run: flutter pub get
-      - run: flutter build apk --release
-      - name: Rename APK
+      - run: flutter build apk --release --split-per-abi
+      - name: Rename APKs
         run: |
           VERSION=${GITHUB_REF_NAME#v}
-          cp build/app/outputs/flutter-apk/app-release.apk "MiniChat-${VERSION}.apk"
+          for f in build/app/outputs/flutter-apk/app-*-release.apk; do
+            arch=$(echo "$f" | sed 's/.*app-\(.*\)-release.apk/\1/')
+            cp "$f" "MiniChat-${VERSION}-${arch}.apk"
+          done
       - uses: actions/upload-artifact@v7
         with:
           name: app-release

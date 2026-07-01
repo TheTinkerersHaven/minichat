@@ -22,9 +22,9 @@
 
 import 'dart:async';
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:dynamic_color/dynamic_color.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:gpt_markdown/gpt_markdown.dart';
@@ -53,7 +53,35 @@ void main() async {
   themeModeNotifier.value = settings.darkMode
       ? ThemeMode.dark
       : ThemeMode.light;
+
   runApp(const MiniChatApp());
+
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    _setSystemUIOverlayStyle(themeModeNotifier.value);
+  });
+
+  themeModeNotifier.addListener(() {
+    _setSystemUIOverlayStyle(themeModeNotifier.value);
+  });
+}
+
+void _setSystemUIOverlayStyle(ThemeMode mode) {
+  final brightness = switch (mode) {
+    ThemeMode.dark => Brightness.dark,
+    ThemeMode.light => Brightness.light,
+    ThemeMode.system => WidgetsBinding.instance.platformDispatcher.platformBrightness,
+  };
+  SystemChrome.setSystemUIOverlayStyle(
+    SystemUiOverlayStyle(
+      systemNavigationBarColor: Colors.transparent,
+      systemNavigationBarDividerColor: Colors.transparent,
+      systemNavigationBarIconBrightness:
+          brightness == Brightness.dark ? Brightness.light : Brightness.dark,
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness:
+          brightness == Brightness.dark ? Brightness.light : Brightness.dark,
+    ),
+  );
 }
 
 class MiniChatApp extends StatelessWidget {
@@ -66,30 +94,34 @@ class MiniChatApp extends StatelessWidget {
       valueListenable: themeModeNotifier,
       builder: (context, mode, _) {
         return DynamicColorBuilder(
-          builder:(lightDynamic, darkDynamic) {
+          builder: (lightDynamic, darkDynamic) {
             return MaterialApp(
               debugShowCheckedModeBanner: false,
               title: 'MiniChat',
               // tema chiaro
               theme: ThemeData(
                 fontFamily: 'RobotoMono',
-                colorScheme: lightDynamic ?? ColorScheme.fromSeed(
-                  seedColor: const Color(0xFF6366F1),
-                  brightness: Brightness.light,
-                ),
+                colorScheme:
+                    lightDynamic ??
+                    ColorScheme.fromSeed(
+                      seedColor: const Color(0xFF6366F1),
+                      brightness: Brightness.light,
+                    ),
               ),
               // tema scuro
               darkTheme: ThemeData(
                 fontFamily: 'RobotoMono',
-                colorScheme: darkDynamic ?? ColorScheme.fromSeed(
-                  seedColor: const Color(0xFF818CF8),
-                  brightness: Brightness.dark,
-                ),
+                colorScheme:
+                    darkDynamic ??
+                    ColorScheme.fromSeed(
+                      seedColor: const Color(0xFF818CF8),
+                      brightness: Brightness.dark,
+                    ),
               ),
               themeMode: mode,
               home: const MyHomePage(title: 'MiniChat'),
             );
-          }
+          },
         );
       },
     );
@@ -366,38 +398,45 @@ class _MyHomePageState extends State<MyHomePage> {
                       return Tooltip(
                         message: 'Download Whisper in background...',
                         child: Center(
-                          child: Stack(
-                            alignment: Alignment.center,
-                            children: [
-                              CircularProgressIndicator(
-                                year2023: false,
-                                value: progress,
-                                strokeWidth: 3.0,
-                                color: Theme.of(context).colorScheme.primary,
-                              ),
-                              Text(
-                                '${(progress * 100).toInt()}%',
-                                style: const TextStyle(
-                                  fontSize: 8,
-                                  fontWeight: FontWeight.bold,
+                          child: Padding(
+                            padding: const EdgeInsets.only(left: 4.0),
+                            child: Stack(
+                              alignment: Alignment.center,
+                              children: [
+                                CircularProgressIndicator(
+                                  year2023: false,
+                                  value: progress,
+                                  strokeWidth: 3.0,
+                                  color: Theme.of(context).colorScheme.primary,
                                 ),
-                              ),
-                            ],
+                                Text(
+                                  '${(progress * 100).toInt()}%',
+                                  style: const TextStyle(
+                                    fontSize: 8,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       );
                     },
                   );
                 } else if (isExtracting) {
-                  return const Tooltip(
+                  return Tooltip(
                     message: 'Extracting...',
-                    child: Center(
-                      child: SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2.5,
-                          color: Colors.orange,
+                    child: Padding(
+                      padding: EdgeInsets.only(left: 4.0),
+                      child: Center(  
+                        child: SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            year2023: false,
+                            strokeWidth: 2.5,
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
                         ),
                       ),
                     ),
@@ -413,7 +452,11 @@ class _MyHomePageState extends State<MyHomePage> {
           padding: const EdgeInsets.only(bottom: 4.0),
           child: Text(
             widget.title,
-            style: const TextStyle(fontSize: 30, letterSpacing: 1.2, fontFamily: 'Silkscreen'),
+            style: const TextStyle(
+              fontSize: 30,
+              letterSpacing: 1.2,
+              fontFamily: 'Silkscreen',
+            ),
           ),
         ),
         centerTitle: true,
@@ -461,10 +504,10 @@ class _MyHomePageState extends State<MyHomePage> {
                       ),
                       decoration: BoxDecoration(
                         color: isUser
-                            ? Theme.of(context).colorScheme.primary
+                            ? Theme.of(context).colorScheme.primaryContainer
                             : Theme.of(
                                 context,
-                              ).colorScheme.surfaceContainerHighest,
+                              ).colorScheme.secondaryContainer,
                         borderRadius: const BorderRadius.all(
                           Radius.circular(12),
                         ),
@@ -482,18 +525,18 @@ class _MyHomePageState extends State<MyHomePage> {
                               fontWeight: FontWeight.bold,
                               fontSize: 11,
                               color: isUser
-                                  ? Theme.of(context).colorScheme.onPrimary
+                                  ? Theme.of(context).colorScheme.onPrimaryContainer
                                   : Theme.of(
                                       context,
-                                    ).colorScheme.onSurfaceVariant,
+                                    ).colorScheme.onSecondaryContainer,
                             ),
                           ),
                           const SizedBox(height: 4),
                           DefaultTextStyle(
                             style: TextStyle(
                               color: isUser
-                                  ? Theme.of(context).colorScheme.onPrimary
-                                  : Theme.of(context).colorScheme.onSurface,
+                                  ? Theme.of(context).colorScheme.onPrimaryContainer
+                                  : Theme.of(context).colorScheme.onSecondaryContainer,
                               fontSize: 15,
                               height: 1.4,
                             ),
@@ -522,19 +565,22 @@ class _MyHomePageState extends State<MyHomePage> {
               ),
             ),
             if (isLoading)
-              const Padding(
+              Padding(
                 padding: EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                 child: Row(
                   children: [
                     SizedBox(
                       width: 16,
                       height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
+                      child: CircularProgressIndicator(
+                        year2023: false,
+                        strokeWidth: 2,
+                      ),
                     ),
                     SizedBox(width: 8),
                     Text(
                       'Bot is writing...',
-                      style: TextStyle(fontSize: 12, color: Colors.grey),
+                      style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant),
                     ),
                   ],
                 ),
@@ -553,7 +599,10 @@ class _MyHomePageState extends State<MyHomePage> {
                         child: SizedBox(
                           width: 20,
                           height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
+                          child: CircularProgressIndicator(
+                            year2023: false,
+                            strokeWidth: 2,
+                          ),
                         ),
                       ),
                     )
@@ -562,7 +611,7 @@ class _MyHomePageState extends State<MyHomePage> {
                       onPressed: isLoading ? null : _toggleListening,
                       icon: Icon(
                         _isListening ? Icons.stop_rounded : Icons.mic_rounded,
-                        color: _isListening ? Colors.red : null,
+                        color: _isListening ? Theme.of(context).colorScheme.error : null,
                       ),
                       style: IconButton.styleFrom(
                         fixedSize: const Size(56, 56),
@@ -713,12 +762,12 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
           color: Theme.of(
             context,
           ).colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
-          border: Border.all(color: Colors.green.withValues(alpha: 0.5)),
+          border: Border.all(color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.5)),
           borderRadius: const BorderRadius.all(Radius.circular(12.0)),
         ),
         child: Row(
           children: [
-            const Icon(Icons.check_circle, color: Colors.green),
+            Icon(Icons.check_circle_rounded, color: Theme.of(context).colorScheme.primary),
             const SizedBox(width: 12),
             Expanded(
               child: Text(
@@ -778,6 +827,7 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
                         ),
                         const SizedBox(height: 8),
                         LinearProgressIndicator(
+                          year2023: false,
                           value: progress.clamp(0.0, 1.0),
                         ),
                       ],
@@ -804,6 +854,7 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
                     ),
                     const SizedBox(height: 8),
                     const LinearProgressIndicator(
+                      year2023: false,
                       value: null,
                     ), // Indeterminate bar
                   ],
@@ -847,131 +898,139 @@ class _AppSettingsPageState extends State<AppSettingsPage> {
         ),
         centerTitle: true,
       ),
-      body: Column(
-        children: [
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-              children: [
-                TextField(
-                  controller: _urlController,
-                  style: const TextStyle(fontFamily: ''),
-                  decoration: const InputDecoration(
-                    border: OutlineInputBorder(),
-                    labelText:
-                        'Full URL (e.g. api.openai.com/v1/chat/completions)',
+      body: SafeArea(
+        top: true,
+        bottom: true,
+        child: Column(
+          children: [
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                children: [
+                  TextField(
+                    controller: _urlController,
+                    style: const TextStyle(fontFamily: ''),
+                    decoration: const InputDecoration(
+                      border: OutlineInputBorder(),
+                      labelText:
+                          'Full URL (e.g. api.openai.com/v1/chat/completions)',
+                    ),
                   ),
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: _apiKeyController,
-                  style: const TextStyle(fontFamily: ''),
-                  decoration: const InputDecoration(
-                    border: OutlineInputBorder(),
-                    labelText: 'API Key',
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: _apiKeyController,
+                    style: const TextStyle(fontFamily: ''),
+                    decoration: const InputDecoration(
+                      border: OutlineInputBorder(),
+                      labelText: 'API Key',
+                    ),
                   ),
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: _modelController,
-                  style: const TextStyle(fontFamily: ''),
-                  decoration: const InputDecoration(
-                    border: OutlineInputBorder(),
-                    labelText: 'Model (e.g. poolside/laguna-xs.2)',
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: _modelController,
+                    style: const TextStyle(fontFamily: ''),
+                    decoration: const InputDecoration(
+                      border: OutlineInputBorder(),
+                      labelText: 'Model (e.g. poolside/laguna-xs.2)',
+                    ),
                   ),
-                ),
-                const SizedBox(height: 8),
-                Center(
-                  child: Text(
-                    "WARNING: API key is stored in plaintext on device.\nOnly OpenAI-compatible API models are supported.",
+                  const SizedBox(height: 8),
+                  Center(
+                    child: Text(
+                      "WARNING: API key is stored in plaintext on device.\nOnly OpenAI-compatible API models are supported.",
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  const Divider(),
+                  const SizedBox(height: 8),
+                  DropdownButtonFormField<String>(
+                    initialValue: _sttLanguage,
+                    decoration: const InputDecoration(
+                      border: OutlineInputBorder(),
+                      labelText: 'Speech recognition language',
+                    ),
+                    items: _sttLanguages.entries.map((e) {
+                      return DropdownMenuItem(value: e.key, child: Text(e.value));
+                    }).toList(),
+                    onChanged: (v) {
+                      if (v != null) setState(() => _sttLanguage = v);
+                    },
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    "For speech recognition, a local Whisper model is used, downloaded and stored on the device. No data is sent to external servers.",
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 10,
                       color: Theme.of(context).colorScheme.onSurfaceVariant,
                     ),
                   ),
-                ),
-                const SizedBox(height: 8),
-                const Divider(),
-                const SizedBox(height: 8),
-                DropdownButtonFormField<String>(
-                  initialValue: _sttLanguage,
-                  decoration: const InputDecoration(
-                    border: OutlineInputBorder(),
-                    labelText: 'Speech recognition language',
-                  ),
-                  items: _sttLanguages.entries.map((e) {
-                    return DropdownMenuItem(value: e.key, child: Text(e.value));
-                  }).toList(),
-                  onChanged: (v) {
-                    if (v != null) setState(() => _sttLanguage = v);
-                  },
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  "For speech recognition, a local Whisper model is used, downloaded and stored on the device. No data is sent to external servers.",
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 10,
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                _buildWhisperDownloadSection(),
-                const SizedBox(height: 24),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                  child: SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: _saveSettings,
-                      child: const Text('Save Settings'),
+                  const SizedBox(height: 16),
+                  _buildWhisperDownloadSection(),
+                  const SizedBox(height: 24),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: _saveSettings,
+                        child: const Text('Save Settings'),
+                      ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-          const Divider(height: 1),
-          SwitchListTile(
-            title: const Text('Dark theme'),
-            subtitle: const Text(
-              'Use dark interface theme\n(trust me, it looks better)',
+            const Divider(height: 1),
+            SwitchListTile(
+              title: const Text('Dark theme'),
+              subtitle: const Text(
+                'Use dark interface theme\n(trust me, it looks better)',
+              ),
+              value: _darkMode,
+              onChanged: (v) async {
+                setState(() => _darkMode = v);
+                themeModeNotifier.value = v ? ThemeMode.dark : ThemeMode.light;
+                final settings = AppSettings(
+                  url: _urlController.text,
+                  apiKey: _apiKeyController.text,
+                  model: _modelController.text,
+                  sttLanguage: _sttLanguage,
+                  darkMode: v,
+                );
+                await settings.saveSettings();
+              },
             ),
-            value: _darkMode,
-            onChanged: (v) async {
-              setState(() => _darkMode = v);
-              themeModeNotifier.value = v ? ThemeMode.dark : ThemeMode.light;
-              final settings = AppSettings(
-                url: _urlController.text,
-                apiKey: _apiKeyController.text,
-                model: _modelController.text,
-                sttLanguage: _sttLanguage,
-                darkMode: v,
-              );
-              await settings.saveSettings();
-            },
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 }
 
-/// Removes the protocol prefix (http:// or https://) from a URL string.
-String _stripProtocol(String url) {
-  if (url.startsWith('https://')) return url.substring(8);
-  if (url.startsWith('http://')) return url.substring(7);
-  return url;
-}
-
-/// Validates that the URL has at least a host and a path after stripping the protocol.
-String? _validateUrl(String url) {
+/// Parses a user-provided URL string into a [Uri] with proper scheme handling.
+///
+/// Accepts formats like:
+/// - `api.openai.com/v1/chat/completions`
+/// - `https://api.openai.com/v1/chat/completions`
+/// - `http://localhost:8080/v1/chat/completions`
+///
+/// Returns `null` if the URL is empty or cannot be parsed.
+Uri? _parseEndpointUrl(String url) {
   if (url.isEmpty) return null;
-  final cleanUrl = _stripProtocol(url);
-  final parts = cleanUrl.split('/');
-  if (parts.length < 2) return null;
-  return cleanUrl;
+
+  // Add default https:// scheme if missing
+  final uri = url.contains('://') ? Uri.parse(url) : Uri.parse('https://$url');
+
+  // Require at least host and path
+  if (uri.host.isEmpty || uri.pathSegments.isEmpty) return null;
+
+  return uri;
 }
 
 class Request {
@@ -980,20 +1039,16 @@ class Request {
     List<Map<String, String>> messages,
     AppSettings settings,
   ) async {
-    final cleanUrl = _validateUrl(settings.url);
-    if (cleanUrl == null) {
+    final uri = _parseEndpointUrl(settings.url);
+    if (uri == null) {
       throw Exception(
         'Invalid URL. Enter a full URL (e.g. api.openai.com/v1/chat/completions)',
       );
     }
 
-    final host = cleanUrl.substring(0, cleanUrl.indexOf('/'));
-    final path = cleanUrl.substring(cleanUrl.indexOf('/') + 1);
-    final url = Uri.https(host, '/$path');
-
     final client = HttpSseClient();
     final events = client.connect(
-      url,
+      uri,
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

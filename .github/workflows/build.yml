@@ -77,10 +77,12 @@ jobs:
           EOF
 
           # Use app icon if available, otherwise create a placeholder
-          if [ -f $APPDIR/usr/bin/data/flutter_assets/assets/icon.png ]; then
-            cp $APPDIR/usr/bin/data/flutter_assets/assets/icon.png $APPDIR/$APP.png
-          elif [ -f $APPDIR/usr/bin/data/flutter_assets/assets/icon.jpg ]; then
-            cp $APPDIR/usr/bin/data/flutter_assets/assets/icon.jpg $APPDIR/$APP.png
+          ICON_SRC="$APPDIR/usr/bin/data/flutter_assets/assets/icon/app_icon.png"
+          if [ ! -f "$ICON_SRC" ]; then
+            ICON_SRC="$APPDIR/usr/bin/data/flutter_assets/assets/icon.png"
+          fi
+          if [ -f "$ICON_SRC" ]; then
+            cp "$ICON_SRC" $APPDIR/$APP.png
           else
             printf '\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x02\x00\x00\x00\x90wS\xde\x00\x00\x00\x0cIDATx\x9cc\xf8\x0f\x00\x00\x01\x01\x00\x05\x18\xd8N\x00\x00\x00\x00IEND\xaeB`\x82' > $APPDIR/$APP.png
           fi

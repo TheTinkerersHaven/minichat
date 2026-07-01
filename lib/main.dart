@@ -25,6 +25,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:dynamic_color/dynamic_color.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:gpt_markdown/gpt_markdown.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -64,25 +65,31 @@ class MiniChatApp extends StatelessWidget {
     return ValueListenableBuilder<ThemeMode>(
       valueListenable: themeModeNotifier,
       builder: (context, mode, _) {
-        return MaterialApp(
-          debugShowCheckedModeBanner: false,
-          title: 'MiniChat',
-          theme: ThemeData(
-            fontFamily: 'RobotoMono',
-            colorScheme: ColorScheme.fromSeed(
-              seedColor: const Color(0xFF6366F1),
-              brightness: Brightness.light,
-            ),
-          ),
-          darkTheme: ThemeData(
-            fontFamily: 'RobotoMono',
-            colorScheme: ColorScheme.fromSeed(
-              seedColor: const Color(0xFF818CF8),
-              brightness: Brightness.dark,
-            ),
-          ),
-          themeMode: mode,
-          home: const MyHomePage(title: 'MiniChat'),
+        return DynamicColorBuilder(
+          builder:(lightDynamic, darkDynamic) {
+            return MaterialApp(
+              debugShowCheckedModeBanner: false,
+              title: 'MiniChat',
+              // tema chiaro
+              theme: ThemeData(
+                fontFamily: 'RobotoMono',
+                colorScheme: lightDynamic ?? ColorScheme.fromSeed(
+                  seedColor: const Color(0xFF6366F1),
+                  brightness: Brightness.light,
+                ),
+              ),
+              // tema scuro
+              darkTheme: ThemeData(
+                fontFamily: 'RobotoMono',
+                colorScheme: darkDynamic ?? ColorScheme.fromSeed(
+                  seedColor: const Color(0xFF818CF8),
+                  brightness: Brightness.dark,
+                ),
+              ),
+              themeMode: mode,
+              home: const MyHomePage(title: 'MiniChat'),
+            );
+          }
         );
       },
     );
@@ -363,6 +370,7 @@ class _MyHomePageState extends State<MyHomePage> {
                             alignment: Alignment.center,
                             children: [
                               CircularProgressIndicator(
+                                year2023: false,
                                 value: progress,
                                 strokeWidth: 3.0,
                                 color: Theme.of(context).colorScheme.primary,

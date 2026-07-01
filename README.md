@@ -1,6 +1,20 @@
-# MiniChat
+<div align="center">
+  <img src="assets/icon/app_icon.png" width="128" height="128" alt="MiniChat logo">
+</div>
 
-A Flutter chat client for LLMs with OpenAI-compatible APIs, featuring local speech recognition via Whisper.
+<div align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="textlogowhite.svg">
+    <source media="(prefers-color-scheme: light)" srcset="textlogoblack.svg">
+    <img src="assets/logo-dark-theme.svg" alt="MiniChat Logo" width="256">
+  </picture>
+</div>
+
+---
+
+<p align="center">
+  A Flutter chat client for LLMs with OpenAI-compatible APIs, featuring local speech recognition via Whisper.
+</p>
 
 ## Features
 
@@ -53,5 +67,4 @@ The app can download a Whisper model (~200MB) for offline speech-to-text. Go to 
 | `record` | Audio recording |
 | `archive` | Tarball extraction for Whisper model |
 | `path_provider` | File system paths |
-| `google_fonts` | Roboto Mono & Silkscreen fonts |
 | `http` | HTTP client |
